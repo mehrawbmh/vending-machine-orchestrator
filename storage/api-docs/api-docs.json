@@ -1,0 +1,638 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Vending Machine Orchestrator API",
+        "description": "RESTful API for managing vending machines and a shared product inventory. Machines operate as state machines coordinated by an orchestrator.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8000",
+            "description": "Local development"
+        }
+    ],
+    "paths": {
+        "/api/orchestrator/start-work": {
+            "post": {
+                "tags": [
+                    "Orchestrator"
+                ],
+                "summary": "Select the least-used idle vending machine",
+                "description": "The orchestrator picks the idle machine with the lowest usage_count and transitions it to choose_product state. Returns 409 if no idle machine is available.",
+                "operationId": "914e7eeaca6e54a1c5437c84d606fcba",
+                "responses": {
+                    "200": {
+                        "description": "Machine selected",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Machine selected and moved to choose_product state."
+                                        },
+                                        "machine": {
+                                            "$ref": "#/components/schemas/VendingMachine"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "No idle machine available",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "example": "No idle vending machine available."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/orchestrator/choose-product": {
+            "post": {
+                "tags": [
+                    "Orchestrator"
+                ],
+                "summary": "Purchase a product through a vending machine",
+                "description": "Given a machine in choose_product state, a product, a count, and coins (must equal count at 1 coin per item), this endpoint locks the inventory, decrements stock, and moves the machine to processing. A background job returns it to idle after delivery.",
+                "operationId": "4993cd3e9949ee9608b75016f2d2475f",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "machine_id",
+                                    "product_id",
+                                    "count",
+                                    "coins"
+                                ],
+                                "properties": {
+                                    "machine_id": {
+                                        "description": "ID of the machine in choose_product state (returned by start-work)",
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "product_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "count": {
+                                        "description": "Number of items to purchase",
+                                        "type": "integer",
+                                        "example": 3
+                                    },
+                                    "coins": {
+                                        "description": "Number of coins inserted (must equal count)",
+                                        "type": "integer",
+                                        "example": 3
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Product purchased, machine is processing",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Product selected. Machine is now processing."
+                                        },
+                                        "machine": {
+                                            "$ref": "#/components/schemas/VendingMachine"
+                                        },
+                                        "product": {
+                                            "$ref": "#/components/schemas/Product"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Business rule violation or validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "example": "Coins must equal the number of products (1 coin per item)."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/products": {
+            "get": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "List all products",
+                "operationId": "1bfaa78d1c2c3848ab8165c5dadcad3e",
+                "responses": {
+                    "200": {
+                        "description": "List of products",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Product"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Add a new product to the inventory",
+                "operationId": "e8185e307706e2cd84bbcf5171e2f09d",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "stock"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Cola"
+                                    },
+                                    "stock": {
+                                        "type": "integer",
+                                        "example": 100
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Product created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Product"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Product with this name already exists"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/products/{id}/stock": {
+            "patch": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Update the stock of an existing product",
+                "operationId": "9125bb230e24b2044cff05ec49c3de90",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "stock"
+                                ],
+                                "properties": {
+                                    "stock": {
+                                        "type": "integer",
+                                        "example": 50
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Stock updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Product"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Product not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/products/{id}": {
+            "delete": {
+                "tags": [
+                    "Products"
+                ],
+                "summary": "Delete a product",
+                "operationId": "e80a6ca46716acee6b47ea1ac91663c0",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Product deleted"
+                    },
+                    "404": {
+                        "description": "Product not found"
+                    }
+                }
+            }
+        },
+        "/api/vending-machines": {
+            "get": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "List all vending machines",
+                "operationId": "d9c0a55bbca6796c336d85024f306718",
+                "responses": {
+                    "200": {
+                        "description": "List of vending machines",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VendingMachine"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "Create a new vending machine",
+                "operationId": "b68057e9a0efb1fe50fd02294c03035b",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Machine A"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Machine created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VendingMachine"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/vending-machines/{id}": {
+            "get": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "Get a vending machine by ID",
+                "operationId": "ec339afdbfbf55698f430e7c2ca47293",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Vending machine details",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VendingMachine"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Machine not found"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "Update a vending machine",
+                "operationId": "e6888f84691489ee07aa74ede6bd89fb",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Machine A (Updated)"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Machine updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VendingMachine"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Machine not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "Delete a vending machine",
+                "operationId": "d2f85355269775949f69835f00ffd22f",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Machine deleted"
+                    },
+                    "404": {
+                        "description": "Machine not found"
+                    }
+                }
+            }
+        },
+        "/api/vending-machines/{id}/reset": {
+            "post": {
+                "tags": [
+                    "Vending Machines"
+                ],
+                "summary": "Reset a vending machine to idle state",
+                "description": "Forces a vending machine back to idle state regardless of its current state. Useful for recovering stuck machines.",
+                "operationId": "c978a9be2cc5afc3c94fc2521ef93ab6",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Machine reset to idle",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Machine has been reset to idle state."
+                                        },
+                                        "machine": {
+                                            "$ref": "#/components/schemas/VendingMachine"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Machine not found"
+                    },
+                    "409": {
+                        "description": "Machine is already idle",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "example": "Machine is already idle."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "VendingMachineStatus": {
+                "description": "The operational state of a vending machine.",
+                "type": "string",
+                "enum": [
+                    "idle",
+                    "choose_product",
+                    "processing"
+                ]
+            },
+            "Product": {
+                "required": [
+                    "id",
+                    "name",
+                    "stock",
+                    "created_at",
+                    "updated_at"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Cola"
+                    },
+                    "stock": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "VendingMachine": {
+                "required": [
+                    "id",
+                    "name",
+                    "status",
+                    "usage_count",
+                    "created_at",
+                    "updated_at"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Machine A"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/VendingMachineStatus"
+                    },
+                    "usage_count": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Orchestrator",
+            "description": "Orchestrator"
+        },
+        {
+            "name": "Products",
+            "description": "Products"
+        },
+        {
+            "name": "Vending Machines",
+            "description": "Vending Machines"
+        }
+    ]
+}
